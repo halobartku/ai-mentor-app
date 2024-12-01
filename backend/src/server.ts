@@ -9,6 +9,7 @@ import { authRoutes } from './routes/auth';
 import { userRoutes } from './routes/user';
 import { aiRoutes } from './routes/ai';
 import { analyticsRoutes } from './routes/analytics';
+import { preferencesRoutes } from './routes/preferences';
 import { initializeSocket } from './services/socket.service';
 import { corsOptions } from './config/cors';
 import { connectDatabase } from './config/database';
@@ -34,6 +35,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/preferences', preferencesRoutes);
 
 // Error handling
 app.use(errorHandler);
