@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { prisma } from '../config/database';
+import { BaseService } from './base.service';
 import { AppError } from '../middleware/errorHandler';
 import { PersonalizationService } from './personalization.service';
 
@@ -7,24 +7,42 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-export class AIService {
-  static async generateMentorResponse(userId: string, message: string, chatId?: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        subscription: true
-      }
+export class AIService extends BaseService {
+  private personalizationService: PersonalizationService;
+
+  constructor() {
+    super();
+    this.personalizationService = new PersonalizationService();
+  }
+
+  async generateMentorResponse(userId: string, message: string, chatId?: string) {
+    const user = await this.getCachedOrFetch(
+      `user:${userId}:subscription`,
+      async () => {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            subscription: {
+              select: {
+                tier: true,
+                status: true
+              }
+            }
+          }
+        });
+        if (!user) throw new AppError(404, 'User not found');
+        return user;
+      },
+      300 // Cache for 5 minutes
+    );
+
+    // Get recent chat context with optimized query
+    const recentMessages = await this.queryOptimizer.getChatHistory(userId, {
+      limit: 10
     });
 
-    if (!user) {
-      throw new AppError(404, 'User not found');
-    }
-
-    // Get recent chat context
-    const recentMessages = await this.getRecentContext(userId, chatId);
-
     // Generate personalized prompt
-    const personalizedMessage = await PersonalizationService.generatePersonalizedPrompt(
+    const personalizedMessage = await this.personalizationService.generatePersonalizedPrompt(
       userId,
       message
     );
@@ -33,157 +51,116 @@ export class AIService {
     const conversationContext = [
       {
         role: 'system',
-        content: 'You are an intelligent and empathetic AI mentor, focused on helping users achieve their personal and professional goals. Adapt your communication style and approach based on the user\'s preferences and learning style.'
+        content: 'You are an intelligent and empathetic AI mentor, focused on helping users achieve their personal and professional goals.'
       },
-      ...recentMessages.map(msg => ({
+      ...recentMessages.messages.map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content
       })),
       { role: 'user' as const, content: personalizedMessage }
     ];
 
-    // Generate AI response
-    const response = await openai.chat.completions.create({
-      model: user.subscription?.tier === 'premium' ? 'gpt-4' : 'gpt-3.5-turbo',
-      messages: conversationContext,
-      temperature: 0.7,
-      max_tokens: 500
-    });
+    const startTime = Date.now();
 
-    const aiResponse = response.choices[0]?.message?.content;
-    if (!aiResponse) {
-      throw new AppError(500, 'Failed to generate AI response');
-    }
+    try {
+      // Generate AI response
+      const response = await openai.chat.completions.create({
+        model: user.subscription?.tier === 'premium' ? 'gpt-4' : 'gpt-3.5-turbo',
+        messages: conversationContext,
+        temperature: 0.7,
+        max_tokens: 500
+      });
 
-    // Store the conversation
-    const chat = await this.storeConversation(
-      userId,
-      message,
-      aiResponse,
-      chatId
-    );
-
-    // Update learning behavior
-    await PersonalizationService.analyzeUserBehavior(userId);
-
-    return {
-      response: aiResponse,
-      chatId: chat.id
-    };
-  }
-
-  private static async getRecentContext(userId: string, chatId?: string) {
-    const query = chatId
-      ? { chatId }
-      : {
-          chat: {
-            userId
-          }
-        };
-
-    return await prisma.message.findMany({
-      where: query,
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: 10,
-      select: {
-        content: true,
-        role: true
+      const aiResponse = response.choices[0]?.message?.content;
+      if (!aiResponse) {
+        throw new AppError(500, 'Failed to generate AI response');
       }
-    });
+
+      // Store the conversation with optimized query
+      const chat = chatId
+        ? await this.appendToExistingChat(chatId, message, aiResponse)
+        : await this.createNewChat(userId, message, aiResponse);
+
+      // Log metrics
+      await this.logAIMetrics({
+        userId,
+        responseTime: Date.now() - startTime,
+        tokenCount: this.calculateTokenCount(conversationContext, aiResponse),
+        modelUsed: user.subscription?.tier === 'premium' ? 'gpt-4' : 'gpt-3.5-turbo',
+        errorOccurred: false,
+        contextLength: conversationContext.length
+      });
+
+      // Update cache
+      await this.queryOptimizer.invalidateUserCache(userId);
+
+      return {
+        response: aiResponse,
+        chatId: chat.id
+      };
+    } catch (error) {
+      // Log error metrics
+      await this.logAIMetrics({
+        userId,
+        responseTime: Date.now() - startTime,
+        tokenCount: 0,
+        modelUsed: user.subscription?.tier === 'premium' ? 'gpt-4' : 'gpt-3.5-turbo',
+        errorOccurred: true,
+        contextLength: conversationContext.length
+      });
+
+      throw error;
+    }
   }
 
-  private static async storeConversation(
-    userId: string,
-    userMessage: string,
-    aiResponse: string,
-    chatId?: string
-  ) {
-    if (chatId) {
-      // Add to existing chat
-      await prisma.message.createMany({
-        data: [
-          {
-            chatId,
-            content: userMessage,
-            role: 'user'
-          },
-          {
-            chatId,
-            content: aiResponse,
-            role: 'assistant'
-          }
-        ]
-      });
-
-      return await prisma.chat.findUnique({
-        where: { id: chatId }
-      });
-    } else {
-      // Create new chat
-      return await prisma.chat.create({
-        data: {
-          userId,
-          messages: {
-            create: [
-              {
-                content: userMessage,
-                role: 'user'
-              },
-              {
-                content: aiResponse,
-                role: 'assistant'
-              }
+  private async appendToExistingChat(chatId: string, userMessage: string, aiResponse: string) {
+    return await prisma.chat.update({
+      where: { id: chatId },
+      data: {
+        messages: {
+          createMany: {
+            data: [
+              { content: userMessage, role: 'user' },
+              { content: aiResponse, role: 'assistant' }
             ]
           }
         }
-      });
-    }
-  }
-
-  static async generateGoalSuggestions(userId: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        goals: true,
-        preferences: true
       }
     });
+  }
 
-    if (!user) {
-      throw new AppError(404, 'User not found');
-    }
-
-    const completedGoals = user.goals.filter(g => g.status === 'completed');
-    const inProgressGoals = user.goals.filter(g => g.status === 'in_progress');
-
-    const prompt = `Based on the user's preferences and completed goals, suggest 3 new goals.
-
-User interests: ${user.preferences?.interests?.join(', ') || 'Not specified'}
-Focus areas: ${user.preferences?.focusAreas?.join(', ') || 'Not specified'}
-
-Completed goals:
-${completedGoals.map(g => `- ${g.title}`).join('\n')}
-
-Current goals:
-${inProgressGoals.map(g => `- ${g.title}`).join('\n')}`;
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an AI mentor helping users set meaningful and achievable goals.'
-        },
-        {
-          role: 'user',
-          content: prompt
+  private async createNewChat(userId: string, userMessage: string, aiResponse: string) {
+    return await prisma.chat.create({
+      data: {
+        userId,
+        messages: {
+          createMany: {
+            data: [
+              { content: userMessage, role: 'user' },
+              { content: aiResponse, role: 'assistant' }
+            ]
+          }
         }
-      ],
-      temperature: 0.7
+      }
     });
+  }
 
-    return response.choices[0]?.message?.content || '';
+  private calculateTokenCount(context: any[], response: string): number {
+    // Simple estimation: ~4 chars per token
+    const totalText = [...context.map(msg => msg.content), response].join('');
+    return Math.ceil(totalText.length / 4);
+  }
+
+  private async logAIMetrics(metrics: {
+    userId: string;
+    responseTime: number;
+    tokenCount: number;
+    modelUsed: string;
+    errorOccurred: boolean;
+    contextLength: number;
+  }) {
+    await prisma.aiMetrics.create({
+      data: metrics
+    });
   }
 }
