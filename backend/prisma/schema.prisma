@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String            @id @default(cuid())
+  email             String            @unique
+  password          String
+  name              String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  subscription      Subscription?
+  stripeCustomerId  String?
+  goals             Goal[]
+  chats             Chat[]
+  preferences       UserPreferences?
+  learningBehaviors LearningBehavior?
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id])
+  tier                 String    @default("free")
+  status               String    @default("active")
+  stripeSubscriptionId String?
+  startDate            DateTime  @default(now())
+  endDate              DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Goal {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  title       String
+  description String?
+  status      String    @default("in_progress")
+  deadline    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  category    String?
+  priority    String?   @default("medium")
+  tags        String[]
+}
+
+model Chat {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  topic     String?
+  context   Json?     // Stores chat context and metadata
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id])
+  content   String
+  role      String   // 'user' or 'assistant'
+  createdAt DateTime @default(now())
+  metadata  Json?    // Stores additional message data
+}
+
+model UserPreferences {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  learningStyle     String?  // visual, auditory, reading, kinesthetic
+  communicationStyle String?  // formal, casual, direct, supportive
+  interests         String[]
+  focusAreas        String[]
+  goalPreferences   Json?    // Stores goal-setting preferences
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model LearningBehavior {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id])
+  preferredTimeOfDay    String?   // morning, afternoon, evening
+  averageSessionDuration Float?    // in minutes
+  completionPatterns    Json?     // Stores patterns of goal completion
+  responseToFeedback    String?   // positive, neutral, negative
+  lastActivityAt        DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
