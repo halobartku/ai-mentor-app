@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  api:
+    image: ${DOCKER_REGISTRY}/ai-mentor-api:${TAG}
+    deploy:
+      replicas: 4
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+    networks:
+      - app-network
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - app-network
+    volumes:
+      - redis-data:/data
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      placement:
+        constraints: [node.role == manager]
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - static-content:/usr/share/nginx/html
+    networks:
+      - app-network
+
+  prometheus:
+    image: prom/prometheus
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - monitoring
+
+  loki:
+    image: grafana/loki
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+    volumes:
+      - loki-data:/loki
+    networks:
+      - monitoring
+
+networks:
+  app-network:
+    driver: overlay
+  monitoring:
+    driver: overlay
+
+volumes:
+  redis-data:
+  static-content:
+  prometheus-data:
+  grafana-data:
+  loki-data:
