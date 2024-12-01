@@ -1,0 +1,74 @@
+groups:
+- name: AIMetrics
+  rules:
+  - alert: HighResponseTime
+    expr: rate(ai_response_time_ms_sum[5m]) / rate(ai_response_time_ms_count[5m]) > 1000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High AI response time
+      description: AI response time is above 1 second for the past 5 minutes
+
+  - alert: HighErrorRate
+    expr: rate(ai_error_count[5m]) > 5
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: High AI error rate
+      description: AI service is experiencing high error rate
+
+  - alert: HighMemoryUsage
+    expr: process_resident_memory_bytes > 1.5e+9
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High memory usage
+      description: Application is using more than 1.5GB of memory
+
+  - alert: HighCPUUsage
+    expr: process_cpu_usage > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High CPU usage
+      description: Application is using more than 80% CPU
+
+  - alert: ServiceDown
+    expr: up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Service is down
+      description: Service {{ $labels.job }} is down
+
+  - alert: HighRequestLatency
+    expr: http_request_duration_seconds{quantile="0.9"} > 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: High request latency
+      description: 90th percentile of HTTP request duration is above 1s
+
+  - alert: DatabaseConnectionIssues
+    expr: pg_up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Database connection issues
+      description: Unable to connect to the database
+
+  - alert: RedisConnectionIssues
+    expr: redis_up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: Redis connection issues
+      description: Unable to connect to Redis
