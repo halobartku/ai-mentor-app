@@ -1,88 +1,103 @@
 # Deployment Guide
 
-This guide covers deploying the AI Mentor App to production using Docker Swarm.
-
 ## Prerequisites
 
-- Docker and Docker Swarm installed on production servers
-- Domain name configured with DNS
-- SSL certificates
+- Docker and Docker Swarm initialized on production servers
+- SSL certificates ready in `nginx/ssl/`
+- Environment variables configured in `.env.production`
+- Docker registry access configured
 
-## Production Setup
+## Production Environment Setup
 
-### 1. Initialize Docker Swarm
-
-```bash
-docker swarm init
-```
-
-### 2. Add Worker Nodes (Optional)
+### 1. Initialize Swarm
 
 ```bash
-docker swarm join --token <token> <manager-ip>:2377
+# On manager node
+docker swarm init --advertise-addr <MANAGER-IP>
+
+# On worker nodes (using token from manager init)
+docker swarm join --token <TOKEN> <MANAGER-IP>:2377
 ```
 
-### 3. Configure Environment
+### 2. Configure Environment
 
-1. Create production environment file:
-```bash
-cp .env.example .env.prod
+Create `.env.production` with required variables:
+
+```env
+DOCKER_REGISTRY=your-registry
+TAG=latest
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+REDIS_URL=redis://redis:6379
+JWT_SECRET=your-secret
+OPENAI_API_KEY=your-key
+STRIPE_SECRET_KEY=your-key
+GRAFANA_PASSWORD=admin-password
 ```
 
-2. Update environment variables with production values:
-- `DATABASE_URL`
-- `JWT_SECRET`
-- `OPENAI_API_KEY`
-- `STRIPE_SECRET_KEY`
+### 3. SSL Certificates
 
-### 4. SSL Certificates
-
-1. Place SSL certificates in `nginx/certs/`:
+Place SSL certificates in `nginx/ssl/`:
 - `fullchain.pem`
 - `privkey.pem`
 
-### 5. Deploy Stack
+### 4. Deploy Stack
 
 ```bash
-docker stack deploy -c docker-compose.prod.yml aimentor
-```
+# Deploy using script
+./scripts/deploy.sh
 
-### 6. Verify Deployment
-
-```bash
-docker stack ps aimentor
+# Or manually
+docker stack deploy -c docker-compose.production.yml aimentor
 ```
 
 ## Monitoring
 
-### Logs
+### Access Monitoring Tools
+
+- Grafana: https://aimentor.app/grafana
+- Prometheus: https://aimentor.app/prometheus
+
+### View Logs
 
 ```bash
 # View service logs
-docker service logs aimentor_backend
+docker service logs aimentor_api
+
+# View specific container logs
+docker logs <container-id>
 ```
 
-### Scaling
+### Check Service Status
 
 ```bash
-# Scale backend service
-docker service scale aimentor_backend=3
+# List services
+docker service ls
+
+# View service details
+docker service ps aimentor_api
 ```
 
-## Updates
+## Scaling
 
-### Rolling Updates
+### Scale Services
 
 ```bash
-# Update backend service
-docker service update --image yourusername/aimentor-backend:latest aimentor_backend
+# Scale API service
+docker service scale aimentor_api=6
+
+# Scale nginx
+docker service scale aimentor_nginx=3
 ```
 
-### Rollback
+### Resource Limits
 
-```bash
-# Rollback to previous version
-docker service rollback aimentor_backend
+Adjust resource limits in `docker-compose.production.yml`:
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '1'
+      memory: 1G
 ```
 
 ## Backup and Recovery
@@ -91,91 +106,78 @@ docker service rollback aimentor_backend
 
 ```bash
 # Create backup
-docker exec -t aimentor_db pg_dump -U postgres aimentor > backup.sql
+pg_dump -h host -U user dbname > backup.sql
+
+# Restore from backup
+psql -h host -U user dbname < backup.sql
 ```
 
-### Database Restore
+### Redis Backup
 
 ```bash
-# Restore from backup
-docker exec -i aimentor_db psql -U postgres aimentor < backup.sql
+# Save redis data
+redis-cli save
+
+# Copy dump.rdb
+docker cp aimentor_redis:/data/dump.rdb ./redis-backup/
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. Connection Refused
-- Check if services are running: `docker service ls`
-- Verify nginx configuration
-- Check firewall rules
+1. Service Won't Start
+   - Check logs: `docker service logs aimentor_api`
+   - Verify environment variables
+   - Check resource limits
 
-2. Database Connection Issues
-- Verify DATABASE_URL environment variable
-- Check database service status
-- Ensure database migrations are up to date
+2. High Memory Usage
+   - Monitor with Grafana
+   - Adjust resource limits
+   - Check for memory leaks
 
-3. SSL Certificate Problems
-- Verify certificate paths in nginx configuration
-- Check certificate expiration dates
-- Ensure proper certificate permissions
+3. Slow Response Times
+   - Check Prometheus metrics
+   - Verify Redis connection
+   - Monitor database performance
 
 ### Health Checks
 
 ```bash
-# Check service health
-docker service inspect aimentor_backend --format='{{.UpdateStatus.State}}'
+# API health
+curl https://aimentor.app/health
+
+# Redis health
+redis-cli ping
+
+# Database health
+pg_isready -h host -p 5432
 ```
 
-## Security Considerations
+## Security
 
-1. Environment Variables
-- Use secrets management for sensitive data
-- Regularly rotate API keys and secrets
-- Never commit .env files to version control
+### SSL/TLS
 
-2. Network Security
-- Configure firewall rules
-- Use private Docker registry
-- Implement rate limiting
+- Certificates auto-renewed with certbot
+- Strong cipher suite configured in nginx
+- HTTP redirects to HTTPS
 
-3. Monitoring and Alerting
-- Set up logging aggregation
-- Configure alerting for critical errors
-- Monitor resource usage
+### Firewalls
 
-## Performance Optimization
+```bash
+# Allow required ports
+ufw allow 80,443/tcp
+ufw allow 2377/tcp  # Swarm
+ufw allow 7946/tcp  # Swarm
+ufw enable
+```
 
-1. Caching
-- Configure Redis caching
-- Implement response caching in nginx
-- Use CDN for static assets
+### Updates
 
-2. Database
-- Optimize queries
-- Configure connection pooling
-- Regular maintenance and cleanup
+```bash
+# Update images
+docker pull ${DOCKER_REGISTRY}/ai-mentor-api:latest
 
-3. Application
-- Enable compression
-- Optimize Docker images
-- Configure proper resource limits
-
-## Maintenance
-
-### Regular Tasks
-
-1. Updates
-- System updates
-- Dependencies updates
-- Security patches
-
-2. Monitoring
-- Resource usage
-- Error rates
-- Response times
-
-3. Backup
-- Database backups
-- Configuration backups
-- Verification of backup integrity
+# Deploy updates
+./scripts/deploy.sh
+```
