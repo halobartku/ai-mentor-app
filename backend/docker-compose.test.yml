@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  test-db:
+    image: postgres:14-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=aimentor_test
+
+  test-redis:
+    image: redis:alpine
+    ports:
+      - "6380:6379"
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - NODE_ENV=test
+      - DATABASE_URL=postgresql://postgres:postgres@test-db:5432/aimentor_test
+      - REDIS_URL=redis://test-redis:6379
+      - JWT_SECRET=test-secret
+    depends_on:
+      - test-db
+      - test-redis
