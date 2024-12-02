@@ -1,14 +1,12 @@
-import { AppProps } from 'next/app';
-import { AuthProvider } from '../components/auth/AuthProvider';
-import { ThemeProvider } from '../theme/ThemeContext';
+import type { AppProps } from 'next/app';
+import { Providers } from '../components/providers/Providers';
+import '../styles/globals.css';
 
 function MyApp({ Component, pageProps }: AppProps) {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <Component {...pageProps} />
-      </AuthProvider>
-    </ThemeProvider>
+    <Providers>
+      <Component {...pageProps} />
+    </Providers>
   );
 }
 
