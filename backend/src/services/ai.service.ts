@@ -1,10 +1,10 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { BaseService } from './base.service';
 import { AppError } from '../middleware/errorHandler';
 import { PersonalizationService } from './personalization.service';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 export class AIService extends BaseService {
@@ -47,31 +47,33 @@ export class AIService extends BaseService {
       message
     );
 
-    // Prepare conversation context
-    const conversationContext = [
-      {
-        role: 'system',
-        content: 'You are an intelligent and empathetic AI mentor, focused on helping users achieve their personal and professional goals.'
-      },
-      ...recentMessages.messages.map(msg => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content
-      })),
-      { role: 'user' as const, content: personalizedMessage }
-    ];
+    // Format conversation history for Claude
+    const conversationHistory = recentMessages.messages.map(msg => 
+      `\n\n${msg.role === 'user' ? 'Human' : 'Assistant'}: ${msg.content}`
+    ).join('');
+
+    const systemPrompt = 'You are Claude, an intelligent and empathetic AI mentor, focused on helping users achieve their personal and professional goals. You provide thoughtful, nuanced advice while maintaining professionalism and ethical boundaries.';
 
     const startTime = Date.now();
 
     try {
-      // Generate AI response
-      const response = await openai.chat.completions.create({
-        model: user.subscription?.tier === 'premium' ? 'gpt-4' : 'gpt-3.5-turbo',
-        messages: conversationContext,
-        temperature: 0.7,
-        max_tokens: 500
+      // Select Claude model based on subscription tier
+      const model = user.subscription?.tier === 'premium' ? 'claude-3-opus-20240229' : 'claude-3-sonnet-20240229';
+
+      // Generate AI response using Claude
+      const response = await anthropic.messages.create({
+        model: model,
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: `${systemPrompt}\n\nPrevious conversation:${conversationHistory}\n\nHuman: ${personalizedMessage}\n\nAssistant:`
+          }
+        ],
+        temperature: 0.7
       });
 
-      const aiResponse = response.choices[0]?.message?.content;
+      const aiResponse = response.content[0].text;
       if (!aiResponse) {
         throw new AppError(500, 'Failed to generate AI response');
       }
@@ -85,10 +87,10 @@ export class AIService extends BaseService {
       await this.logAIMetrics({
         userId,
         responseTime: Date.now() - startTime,
-        tokenCount: this.calculateTokenCount(conversationContext, aiResponse),
-        modelUsed: user.subscription?.tier === 'premium' ? 'gpt-4' : 'gpt-3.5-turbo',
+        tokenCount: this.calculateTokenCount(conversationHistory + personalizedMessage, aiResponse),
+        modelUsed: model,
         errorOccurred: false,
-        contextLength: conversationContext.length
+        contextLength: recentMessages.messages.length + 1
       });
 
       // Update cache
@@ -104,9 +106,9 @@ export class AIService extends BaseService {
         userId,
         responseTime: Date.now() - startTime,
         tokenCount: 0,
-        modelUsed: user.subscription?.tier === 'premium' ? 'gpt-4' : 'gpt-3.5-turbo',
+        modelUsed: user.subscription?.tier === 'premium' ? 'claude-3-opus-20240229' : 'claude-3-sonnet-20240229',
         errorOccurred: true,
-        contextLength: conversationContext.length
+        contextLength: recentMessages.messages.length + 1
       });
 
       throw error;
@@ -145,9 +147,9 @@ export class AIService extends BaseService {
     });
   }
 
-  private calculateTokenCount(context: any[], response: string): number {
-    // Simple estimation: ~4 chars per token
-    const totalText = [...context.map(msg => msg.content), response].join('');
+  private calculateTokenCount(context: string, response: string): number {
+    // Claude typically uses ~4 chars per token (rough estimation)
+    const totalText = context + response;
     return Math.ceil(totalText.length / 4);
   }
 
