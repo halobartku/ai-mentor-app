@@ -1,18 +1,7 @@
-import { useUser } from '@clerk/nextjs';
-import { useRouter } from 'next/router';
-import { useEffect } from 'react';
-
 export default function Home() {
-  const { isSignedIn } = useUser();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (isSignedIn) {
-      router.push('/dashboard');
-    } else {
-      router.push('/sign-in');
-    }
-  }, [isSignedIn, router]);
-
-  return null;
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center p-24">
+      <h1 className="text-4xl font-bold">AI Mentor</h1>
+    </div>
+  );
 }
