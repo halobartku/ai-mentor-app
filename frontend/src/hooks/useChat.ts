@@ -1,39 +1,41 @@
-import { useState } from 'react';
-
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-};
-
 export function useChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const sendMessage = useCallback(async (content: string) => {
+    setLoading(true);
+    addMessage({ role: 'user', content, timestamp: new Date() });
 
-  const sendMessage = async (content: string) => {
-    setIsLoading(true);
-    try {
-      // Add user message
-      const userMessage: Message = { role: 'user', content };
-      setMessages(prev => [...prev, userMessage]);
+    let retryCount = 0;
+    const maxRetries = 3;
 
-      // Mock AI response - replace with actual API call
-      const response = await new Promise<string>(resolve => 
-        setTimeout(() => resolve('Thank you for your message. I'm your AI mentor - how can I help you today?'), 1000)
-      );
+    while (retryCount < maxRetries) {
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: content })
+        });
 
-      // Add AI response
-      const aiMessage: Message = { role: 'assistant', content: response };
-      setMessages(prev => [...prev, aiMessage]);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-    } finally {
-      setIsLoading(false);
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+        
+        await handleStreamingResponse(response);
+        break;
+
+      } catch (error) {
+        retryCount++;
+        if (retryCount === maxRetries) {
+          addMessage({
+            role: 'system',
+            content: 'Failed to process message. Please try again.',
+            error: true,
+            timestamp: new Date()
+          });
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+      }
     }
-  };
+    
+    setLoading(false);
+  }, []);
 
-  return {
-    messages,
-    sendMessage,
-    isLoading,
-  };
+  return { messages, sendMessage };
 }
