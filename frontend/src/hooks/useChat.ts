@@ -1,31 +1,57 @@
 import { useState } from 'react';
+import { useSocket } from './useSocket';
 
-type Message = {
+interface EmotionalState {
+  currentMood: number;
+  stressLevel: number;
+  engagementScore: number;
+  confidenceLevel: number;
+}
+
+interface Message {
   role: 'user' | 'assistant';
   content: string;
-};
+  emotionalState?: EmotionalState;
+  timestamp: Date;
+}
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const socket = useSocket();
 
   const sendMessage = async (content: string) => {
     setIsLoading(true);
     try {
-      // Add user message
-      const userMessage: Message = { role: 'user', content };
+      const userMessage: Message = {
+        role: 'user',
+        content,
+        timestamp: new Date()
+      };
       setMessages(prev => [...prev, userMessage]);
 
-      // Mock AI response - replace with actual API call
-      const response = await new Promise<string>(resolve => 
-        setTimeout(() => resolve('Thank you for your message. I'm your AI mentor - how can I help you today?'), 1000)
-      );
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: content })
+      });
 
-      // Add AI response
-      const aiMessage: Message = { role: 'assistant', content: response };
+      if (!response.ok) throw new Error('Failed to send message');
+
+      const data = await response.json();
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: data.response.content,
+        emotionalState: data.response.emotionalState,
+        timestamp: new Date()
+      };
+
       setMessages(prev => [...prev, aiMessage]);
+      socket.emit('message_read', { messageId: data.messageId });
+
     } catch (error) {
       console.error('Failed to send message:', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -34,6 +60,6 @@ export function useChat() {
   return {
     messages,
     sendMessage,
-    isLoading,
+    isLoading
   };
 }
