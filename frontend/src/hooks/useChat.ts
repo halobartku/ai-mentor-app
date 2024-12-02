@@ -1,39 +1,55 @@
-import { useState } from 'react';
-
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-};
+import { useSocket } from './useSocket';
+import { useChatStore } from '@/store/chatStore';
+import { v4 as uuidv4 } from 'uuid';
 
 export function useChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const socket = useSocket();
+  const { messages, isLoading, addMessage, setLoading } = useChatStore();
 
   const sendMessage = async (content: string) => {
-    setIsLoading(true);
+    setLoading(true);
+    const messageId = uuidv4();
+
     try {
-      // Add user message
-      const userMessage: Message = { role: 'user', content };
-      setMessages(prev => [...prev, userMessage]);
+      const userMessage = {
+        id: messageId,
+        role: 'user',
+        content,
+        timestamp: new Date()
+      };
+      addMessage(userMessage);
 
-      // Mock AI response - replace with actual API call
-      const response = await new Promise<string>(resolve => 
-        setTimeout(() => resolve('Thank you for your message. I'm your AI mentor - how can I help you today?'), 1000)
-      );
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: content, messageId })
+      });
 
-      // Add AI response
-      const aiMessage: Message = { role: 'assistant', content: response };
-      setMessages(prev => [...prev, aiMessage]);
+      if (!response.ok) throw new Error('Failed to send message');
+
+      const data = await response.json();
+      const aiMessage = {
+        id: uuidv4(),
+        role: 'assistant',
+        content: data.response.content,
+        emotionalState: data.response.emotionalState,
+        timestamp: new Date()
+      };
+
+      addMessage(aiMessage);
+      socket.emit('message_read', { messageId });
+
     } catch (error) {
       console.error('Failed to send message:', error);
+      throw error;
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return {
     messages,
     sendMessage,
-    isLoading,
+    isLoading
   };
 }

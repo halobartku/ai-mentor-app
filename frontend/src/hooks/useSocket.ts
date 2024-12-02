@@ -1,28 +1,24 @@
-import { useEffect, useCallback } from 'react';
-import { useDispatch } from 'react-redux';
-import { socketService } from '../services/socket';
+import { useEffect, useRef } from 'react';
+import io, { Socket } from 'socket.io-client';
 
-export const useSocket = () => {
-  const dispatch = useDispatch();
+export function useSocket() {
+  const socketRef = useRef<Socket>();
 
   useEffect(() => {
-    socketService.connect();
+    socketRef.current = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001');
+
+    socketRef.current.on('typing_start', () => {
+      // Handle typing indicator
+    });
+
+    socketRef.current.on('typing_end', () => {
+      // Handle typing end
+    });
 
     return () => {
-      socketService.disconnect();
+      socketRef.current?.disconnect();
     };
   }, []);
 
-  const subscribe = useCallback(<T>(event: string, callback: (data: T) => void) => {
-    return socketService.subscribe(event, callback);
-  }, []);
-
-  const emit = useCallback(<T>(event: string, data?: T) => {
-    socketService.emit(event, data);
-  }, []);
-
-  return {
-    subscribe,
-    emit
-  };
-};
+  return socketRef.current!;
+}
