@@ -1,175 +1,71 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Animated, View, TextInput, ScrollView, Platform } from 'react-native';
-import styled from 'styled-components/native';
-import { TypingIndicator } from './TypingIndicator';
-import { UserPresence } from './UserPresence';
-import { useAIContext } from '../../hooks/useAIContext';
-import { SendIcon, MicIcon, ImageIcon } from '../common/Icons';
+import { useUser } from '@clerk/nextjs';
+import { useChat } from '@/src/hooks/useChat';
+import ChatMessage from './ChatMessage';
+import LoadingDots from '../common/LoadingDots';
 
-const Container = styled.View`
-  flex: 1;
-  background-color: ${({ theme }) => theme.colors.background};
-`;
+export default function ChatInterface() {
+  const { user } = useUser();
+  const [message, setMessage] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { messages, sendMessage, isLoading } = useChat();
 
-const ChatContainer = styled.View`
-  flex: 1;
-  padding: 16px;
-`;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim()) return;
 
-const MessageBubble = styled.View<{ isAI: boolean }>`
-  background-color: ${({ isAI, theme }) =>
-    isAI ? theme.colors.aiMessage : theme.colors.userMessage};
-  padding: 12px 16px;
-  border-radius: 18px;
-  max-width: 80%;
-  align-self: ${({ isAI }) => (isAI ? 'flex-start' : 'flex-end')};
-  margin-bottom: 8px;
-  shadow-color: #000;
-  shadow-offset: 0px 1px;
-  shadow-opacity: 0.1;
-  shadow-radius: 2px;
-  elevation: 2;
-`;
+    setMessage('');
+    await sendMessage(message);
+  };
 
-const MessageText = styled.Text<{ isAI: boolean }>`
-  color: ${({ isAI, theme }) =>
-    isAI ? theme.colors.aiMessageText : theme.colors.userMessageText};
-  font-size: 16px;
-  line-height: 22px;
-`;
-
-const InputContainer = styled.View`
-  flex-direction: row;
-  align-items: center;
-  padding: 12px 16px;
-  background-color: ${({ theme }) => theme.colors.inputBackground};
-  border-top-width: 1px;
-  border-top-color: ${({ theme }) => theme.colors.border};
-`;
-
-const Input = styled.TextInput`
-  flex: 1;
-  font-size: 16px;
-  margin: 0 12px;
-  padding: ${Platform.OS === 'ios' ? '12px' : '8px'};
-  background-color: ${({ theme }) => theme.colors.inputField};
-  border-radius: 20px;
-  color: ${({ theme }) => theme.colors.text};
-`;
-
-const IconButton = styled.TouchableOpacity`
-  padding: 8px;
-  background-color: ${({ theme }) => theme.colors.primary};
-  border-radius: 20px;
-  justify-content: center;
-  align-items: center;
-`;
-
-const TimeStamp = styled.Text`
-  font-size: 12px;
-  color: ${({ theme }) => theme.colors.textLight};
-  align-self: center;
-  margin: 8px 0;
-`;
-
-interface Message {
-  id: string;
-  content: string;
-  isAI: boolean;
-  timestamp: Date;
-}
-
-export const ChatInterface: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const { sendMessage } = useAIContext();
-
-  const handleSend = async () => {
-    if (!inputText.trim()) return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      content: inputText.trim(),
-      isAI: false,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
-    setInputText('');
-    setIsTyping(true);
-
-    try {
-      const response = await sendMessage(inputText);
-      const aiMessage: Message = {
-        id: Date.now().toString(),
-        content: response,
-        isAI: true,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      // Handle error
-    } finally {
-      setIsTyping(false);
-    }
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+    scrollToBottom();
   }, [messages]);
 
   return (
-    <Container>
-      <ChatContainer>
-        <ScrollView
-          ref={scrollViewRef}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 20 }}
-        >
-          {messages.map((message) => (
-            <React.Fragment key={message.id}>
-              <MessageBubble isAI={message.isAI}>
-                <MessageText isAI={message.isAI}>{message.content}</MessageText>
-              </MessageBubble>
-              <TimeStamp>
-                {message.timestamp.toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </TimeStamp>
-            </React.Fragment>
-          ))}
-          {isTyping && <TypingIndicator />}
-        </ScrollView>
-      </ChatContainer>
-
-      <InputContainer>
-        <IconButton onPress={() => {/* Handle image upload */}}>
-          <ImageIcon />
-        </IconButton>
-        <Input
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Type your message..."
-          placeholderTextColor="#999"
-          multiline
-          maxLength={1000}
-          onSubmitEditing={handleSend}
-          blurOnSubmit={false}
-        />
-        {inputText.trim() ? (
-          <IconButton onPress={handleSend}>
-            <SendIcon />
-          </IconButton>
-        ) : (
-          <IconButton onPress={() => {/* Handle voice input */}}>
-            <MicIcon />
-          </IconButton>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg, idx) => (
+          <ChatMessage
+            key={idx}
+            message={msg.content}
+            isAI={msg.role === 'assistant'}
+            timestamp={new Date()}
+          />
+        ))}
+        {isLoading && (
+          <div className="flex justify-center">
+            <LoadingDots />
+          </div>
         )}
-      </InputContainer>
-    </Container>
+        <div ref={messagesEndRef} />
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="flex-shrink-0 border-t border-gray-200 p-4 bg-white"
+      >
+        <div className="flex space-x-4">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type your message..."
+            className="flex-1 min-w-0 rounded-full border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={isLoading || !message.trim()}
+            className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
+        </div>
+      </form>
+    </div>
   );
-};
+}
