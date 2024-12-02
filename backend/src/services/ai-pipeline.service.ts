@@ -1,29 +1,27 @@
 export class AIPipelineService extends BaseService {
-  private cacheService: CacheService;
+  private monitoring: MonitoringService;
 
   constructor() {
     super();
-    this.cacheService = new CacheService();
+    this.monitoring = new MonitoringService();
   }
 
   async processInput(input: string, context: ConversationContext): Promise<AIResponse> {
-    const cacheKey = this.cacheService.generateCacheKey(input, context);
-    const cached = await this.cacheService.getCachedResponse(cacheKey);
-    
-    if (cached) return cached;
-
-    const [rationalAnalysis, processBreakdown] = await Promise.all([
-      this.rationalAdvisor.analyze(input, context),
-      this.processAdvisor.analyze(input, context)
-    ]);
-
-    const response = await this.generateMentorResponse(
-      input, 
-      rationalAnalysis, 
-      processBreakdown
-    );
-
-    await this.cacheService.cacheResponse(cacheKey, response);
-    return response;
+    const start = Date.now();
+    try {
+      const response = await this.generateResponse(input, context);
+      
+      this.monitoring.logAPICall('ai_pipeline', Date.now() - start, true);
+      this.monitoring.logPerformanceMetric({
+        name: 'response_time',
+        value: Date.now() - start
+      });
+      
+      return response;
+    } catch (error) {
+      this.monitoring.logError(error, { input, context });
+      this.monitoring.logAPICall('ai_pipeline', Date.now() - start, false);
+      throw error;
+    }
   }
 }
