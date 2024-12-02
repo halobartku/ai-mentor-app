@@ -1,158 +1,63 @@
-    if (delta.mood > 0.1) {
-      guidance += '- Gradually elevate mood through encouraging language\n';
-    } else if (delta.mood < -0.1) {
-      guidance += '- Acknowledge challenges while maintaining supportive tone\n';
-    }
+import { BaseService } from './base.service';
+import { EmotionalState, ConversationContext, AIResponse } from '../types/ai.types';
+import { EmotionalProcessor } from './emotional-processor.service';
 
-    if (delta.stress < -0.1) {
-      guidance += '- Use calming language and reassuring metaphors\n';
-      guidance += '- Break down complex topics into manageable steps\n';
-    }
+export class AIResponseGenerator extends BaseService {
+  private readonly emotionalProcessor: EmotionalProcessor;
+  private readonly anthropic: Anthropic;
 
-    if (delta.engagement > 0.1) {
-      guidance += '- Incorporate interactive elements and thought-provoking questions\n';
-      guidance += '- Use vivid examples and relatable scenarios\n';
-    }
-
-    if (delta.confidence > 0.1) {
-      guidance += '- Highlight past successes and current capabilities\n';
-      guidance += '- Frame challenges as growth opportunities\n';
-    }
-
-    return guidance;
-  }
-
-  private async formatConversationContext(context: EnrichedContext): Promise<string> {
-    // Create a comprehensive context that includes both conversation history
-    // and identified patterns
-    let formattedContext = 'Conversation Context:\n';
-
-    // Add recent topics with their significance
-    if (context.context.recentTopics.length > 0) {
-      formattedContext += '\nRecent Topics:\n';
-      context.context.recentTopics.forEach(topic => {
-        formattedContext += `- ${topic}\n`;
-      });
-    }
-
-    // Add successful patterns to reinforce
-    if (context.relevantPatterns.successes.length > 0) {
-      formattedContext += '\nSuccessful Approaches:\n';
-      context.relevantPatterns.successes.forEach(([pattern, strength]) => {
-        formattedContext += `- ${pattern} (confidence: ${(strength * 100).toFixed(1)}%)\n`;
-      });
-    }
-
-    // Add areas that need attention
-    if (context.relevantPatterns.challenges.length > 0) {
-      formattedContext += '\nAreas for Growth:\n';
-      context.relevantPatterns.challenges.forEach(challenge => {
-        formattedContext += `- ${challenge}\n`;
-      });
-    }
-
-    return formattedContext;
-  }
-
-  private async calculateEmotionalAlignment(
-    actual: EmotionalState,
-    target: EmotionalState
-  ): Promise<number> {
-    // Calculate weighted alignment across all emotional dimensions
-    const weights = {
-      mood: 0.3,
-      stress: 0.25,
-      engagement: 0.25,
-      confidence: 0.2
-    };
-
-    const alignments = {
-      mood: 1 - Math.abs(actual.currentMood - target.currentMood),
-      stress: 1 - Math.abs(actual.stressLevel - target.stressLevel),
-      engagement: 1 - Math.abs(actual.engagementScore - target.engagementScore),
-      confidence: 1 - Math.abs(actual.confidenceLevel - target.confidenceLevel)
-    };
-
-    return Object.entries(alignments).reduce(
-      (total, [dimension, value]) => total + (value * weights[dimension]),
-      0
-    );
-  }
-
-  private async calculateContextualRelevance(
-    response: string,
-    context: EnrichedContext
-  ): Promise<number> {
-    // Analyze how well the response addresses the context
-    const topicRelevance = await this.analyzeTopicRelevance(response, context.context.recentTopics);
-    const patternAlignment = await this.analyzePatternAlignment(response, context.relevantPatterns);
-    const challengeAddressing = await this.analyzeChallengeAddressing(response, context.relevantPatterns.challenges);
-
-    // Weight the different aspects of relevance
-    return (
-      topicRelevance * 0.4 +
-      patternAlignment * 0.3 +
-      challengeAddressing * 0.3
-    );
-  }
-
-  private async regenerateResponse(params: RegenerationParams): Promise<AIResponse> {
-    // Adjust the model configuration for better emotional alignment
-    const adjustedConfig = await this.adjustModelConfig({
-      original: params.modelConfig,
-      targetEmotional: params.targetEmotionalState,
-      previousAttempt: params.originalResponse
-    });
-
-    // Generate a new response with the adjusted configuration
-    return this.generateTargetedResponse({
-      ...params,
-      modelConfig: adjustedConfig,
-      attemptCount: (params.attemptCount || 0) + 1
+  constructor() {
+    super();
+    this.emotionalProcessor = new EmotionalProcessor();
+    this.anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
     });
   }
 
-  private async adjustModelConfig(params: ConfigAdjustmentParams): Promise<ModelConfig> {
-    // Fine-tune the model parameters based on previous attempt
-    return {
-      ...params.original,
-      temperature: this.adjustTemperature(params),
-      topP: this.adjustTopP(params),
-      maxTokens: this.adjustMaxTokens(params)
-    };
-  }
-
-  private adjustTemperature(params: ConfigAdjustmentParams): number {
-    // Adjust temperature based on emotional alignment needs
-    const baseTemp = params.original.temperature;
-    const emotionalDelta = this.calculateEmotionalDelta(
-      params.targetEmotional,
-      params.previousAttempt.emotionalState
-    );
-
-    // Increase temperature if we need more emotional variation
-    if (emotionalDelta > 0.3) {
-      return Math.min(baseTemp + 0.1, 1.0);
-    }
-    // Decrease temperature if we need more focused responses
-    if (emotionalDelta < 0.1) {
-      return Math.max(baseTemp - 0.1, 0.1);
-    }
-    return baseTemp;
-  }
-
-  private async handleResponseGenerationError(
-    error: any,
-    params: TargetedResponseParams
-  ): Promise<void> {
-    // Log the error with context for analysis
-    await this.logger.error('Response generation failed', {
-      error,
-      contextSnapshot: this.createErrorContext(params),
-      timestamp: new Date()
+  async generateResponse(
+    message: string,
+    context: ConversationContext
+  ): Promise<AIResponse> {
+    const emotionalState = await this.emotionalProcessor.analyze(message);
+    const targetState = await this.emotionalProcessor.projectOptimalState(emotionalState);
+    
+    const response = await this.anthropic.messages.create({
+      model: 'claude-3-opus-20240229',
+      messages: [{
+        role: 'user',
+        content: await this.constructPrompt(message, context, emotionalState, targetState)
+      }]
     });
 
-    // Adjust system configuration if needed
-    await this.performErrorRecovery(error, params);
+    const aiResponse = {
+      content: response.content[0].text,
+      emotionalState: await this.emotionalProcessor.analyze(response.content[0].text),
+      contextualRelevance: await this.calculateRelevance(response.content[0].text, context)
+    };
+
+    return aiResponse;
+  }
+
+  private async constructPrompt(
+    message: string,
+    context: ConversationContext,
+    currentState: EmotionalState,
+    targetState: EmotionalState
+  ): Promise<string> {
+    return `You are an emotionally intelligent AI mentor.
+Current emotional state: ${JSON.stringify(currentState)}
+Target emotional state: ${JSON.stringify(targetState)}
+
+Recent topics: ${context.recentTopics.join(', ')}
+
+User message: ${message}`;
+  }
+
+  private async calculateRelevance(response: string, context: ConversationContext): Promise<number> {
+    const topicMatches = context.recentTopics.filter(topic =>
+      response.toLowerCase().includes(topic.toLowerCase())
+    ).length;
+    
+    return topicMatches / Math.max(context.recentTopics.length, 1);
   }
 }
