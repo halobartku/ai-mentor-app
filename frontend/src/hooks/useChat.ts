@@ -1,52 +1,41 @@
-import { useCallback } from 'react';
-import { useChatStore } from '@/store/chatStore';
-
 export function useChat() {
-  const { messages, addMessage, updateLastMessage, setLoading } = useChatStore();
-
   const sendMessage = useCallback(async (content: string) => {
     setLoading(true);
     addMessage({ role: 'user', content, timestamp: new Date() });
 
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content })
-      });
+    let retryCount = 0;
+    const maxRetries = 3;
 
-      if (!response.ok) throw new Error('Failed to send message');
-      
-      const reader = response.body?.getReader();
-      let partialResponse = '';
-
-      addMessage({
-        role: 'assistant',
-        content: '',
-        timestamp: new Date()
-      });
-
-      while (reader) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        
-        const text = new TextDecoder().decode(value);
-        partialResponse += text;
-        
-        updateLastMessage({
-          role: 'assistant',
-          content: partialResponse,
-          timestamp: new Date()
+    while (retryCount < maxRetries) {
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: content })
         });
-      }
 
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      throw error;
-    } finally {
-      setLoading(false);
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+        
+        await handleStreamingResponse(response);
+        break;
+
+      } catch (error) {
+        retryCount++;
+        if (retryCount === maxRetries) {
+          addMessage({
+            role: 'system',
+            content: 'Failed to process message. Please try again.',
+            error: true,
+            timestamp: new Date()
+          });
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+      }
     }
-  }, [addMessage, updateLastMessage, setLoading]);
+    
+    setLoading(false);
+  }, []);
 
   return { messages, sendMessage };
 }

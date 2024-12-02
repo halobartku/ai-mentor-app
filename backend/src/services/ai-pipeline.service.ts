@@ -1,46 +1,63 @@
 import { BaseService } from './base.service';
-import { RationalAdvisor } from './advisors/rational.advisor';
-import { ProcessAdvisor } from './advisors/process.advisor';
-import { MentorService } from './mentor.service';
+import { retry } from '@/utils/retry';
+import { AIPipelineError } from '@/errors/AIPipelineError';
 
 export class AIPipelineService extends BaseService {
-  private rationalAdvisor: RationalAdvisor;
-  private processAdvisor: ProcessAdvisor;
-  private mentor: MentorService;
-
   async processInput(input: string, context: ConversationContext): Promise<AIResponse> {
-    const [rationalAnalysis, processBreakdown] = await Promise.all([
-      this.rationalAdvisor.analyze(input, context),
-      this.processAdvisor.analyze(input, context)
-    ]);
+    try {
+      const [rationalAnalysis, processBreakdown] = await Promise.all([
+        retry(() => this.rationalAdvisor.analyze(input, context), {
+          maxAttempts: 3,
+          delayMs: 1000,
+          errorType: 'ADVISOR_ERROR'
+        }),
+        retry(() => this.processAdvisor.analyze(input, context), {
+          maxAttempts: 3,
+          delayMs: 1000,
+          errorType: 'ADVISOR_ERROR'
+        })
+      ]);
 
-    const enrichedPrompt = `As a mentor, synthesize this analysis into a single, comprehensive response:
+      const response = await retry(
+        () => this.generateMentorResponse(input, rationalAnalysis, processBreakdown),
+        {
+          maxAttempts: 3,
+          delayMs: 2000,
+          errorType: 'MENTOR_ERROR'
+        }
+      );
 
-User Input: ${input}
+      return response;
 
-Rational Analysis:
-${JSON.stringify(rationalAnalysis)}
+    } catch (error) {
+      await this.errorLogger.logError(error);
+      throw new AIPipelineError(error);
+    }
+  }
 
-Process Breakdown:
-${JSON.stringify(processBreakdown)}
+  private async generateMentorResponse(input: string, rational: any, process: any) {
+    const enrichedPrompt = this.constructEnrichedPrompt(input, rational, process);
+    const start = Date.now();
 
-Provide a response that:
-1. Integrates logical analysis and practical steps
-2. Maintains a supportive, mentoring tone
-3. Offers clear, actionable guidance
-4. Acknowledges both challenges and opportunities`;
+    try {
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-opus-20240229',
+        messages: [{ role: 'user', content: enrichedPrompt }],
+        temperature: 0.7,
+        stream: true
+      });
 
-    const response = await this.anthropic.messages.create({
-      model: 'claude-3-opus-20240229',
-      messages: [{ role: 'user', content: enrichedPrompt }],
-      temperature: 0.7,
-      stream: true
-    });
-
-    return {
-      content: response.content[0].text,
-      analysis: { rational: rationalAnalysis, process: processBreakdown },
-      emotionalState: await this.emotionalProcessor.analyze(response.content[0].text)
-    };
+      return {
+        content: response.content[0].text,
+        analysis: { rational, process },
+        emotionalState: await this.emotionalProcessor.analyze(response.content[0].text),
+        metadata: {
+          processingTime: Date.now() - start,
+          attempts: 1
+        }
+      };
+    } catch (error) {
+      throw new Error(`Mentor response generation failed: ${error.message}`);
+    }
   }
 }
