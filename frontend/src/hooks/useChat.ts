@@ -1,39 +1,52 @@
-import { useState } from 'react';
-
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-};
+import { useCallback } from 'react';
+import { useChatStore } from '@/store/chatStore';
 
 export function useChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const { messages, addMessage, updateLastMessage, setLoading } = useChatStore();
 
-  const sendMessage = async (content: string) => {
-    setIsLoading(true);
+  const sendMessage = useCallback(async (content: string) => {
+    setLoading(true);
+    addMessage({ role: 'user', content, timestamp: new Date() });
+
     try {
-      // Add user message
-      const userMessage: Message = { role: 'user', content };
-      setMessages(prev => [...prev, userMessage]);
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: content })
+      });
 
-      // Mock AI response - replace with actual API call
-      const response = await new Promise<string>(resolve => 
-        setTimeout(() => resolve('Thank you for your message. I'm your AI mentor - how can I help you today?'), 1000)
-      );
+      if (!response.ok) throw new Error('Failed to send message');
+      
+      const reader = response.body?.getReader();
+      let partialResponse = '';
 
-      // Add AI response
-      const aiMessage: Message = { role: 'assistant', content: response };
-      setMessages(prev => [...prev, aiMessage]);
+      addMessage({
+        role: 'assistant',
+        content: '',
+        timestamp: new Date()
+      });
+
+      while (reader) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const text = new TextDecoder().decode(value);
+        partialResponse += text;
+        
+        updateLastMessage({
+          role: 'assistant',
+          content: partialResponse,
+          timestamp: new Date()
+        });
+      }
+
     } catch (error) {
       console.error('Failed to send message:', error);
+      throw error;
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, [addMessage, updateLastMessage, setLoading]);
 
-  return {
-    messages,
-    sendMessage,
-    isLoading,
-  };
+  return { messages, sendMessage };
 }
