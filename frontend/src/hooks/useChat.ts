@@ -1,59 +1,49 @@
-import { useState } from 'react';
 import { useSocket } from './useSocket';
-
-interface EmotionalState {
-  currentMood: number;
-  stressLevel: number;
-  engagementScore: number;
-  confidenceLevel: number;
-}
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  emotionalState?: EmotionalState;
-  timestamp: Date;
-}
+import { useChatStore } from '@/store/chatStore';
+import { v4 as uuidv4 } from 'uuid';
 
 export function useChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const socket = useSocket();
+  const { messages, isLoading, addMessage, setLoading } = useChatStore();
 
   const sendMessage = async (content: string) => {
-    setIsLoading(true);
+    setLoading(true);
+    const messageId = uuidv4();
+
     try {
-      const userMessage: Message = {
+      const userMessage = {
+        id: messageId,
         role: 'user',
         content,
         timestamp: new Date()
       };
-      setMessages(prev => [...prev, userMessage]);
+      addMessage(userMessage);
 
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content })
+        body: JSON.stringify({ message: content, messageId })
       });
 
       if (!response.ok) throw new Error('Failed to send message');
 
       const data = await response.json();
-      const aiMessage: Message = {
+      const aiMessage = {
+        id: uuidv4(),
         role: 'assistant',
         content: data.response.content,
         emotionalState: data.response.emotionalState,
         timestamp: new Date()
       };
 
-      setMessages(prev => [...prev, aiMessage]);
-      socket.emit('message_read', { messageId: data.messageId });
+      addMessage(aiMessage);
+      socket.emit('message_read', { messageId });
 
     } catch (error) {
       console.error('Failed to send message:', error);
       throw error;
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
