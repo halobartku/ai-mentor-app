@@ -1,56 +1,60 @@
+"use client";
+
 import React from 'react';
-import { View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
-import styled from 'styled-components/native';
 
 interface CircularProgressProps {
   progress: number;
-  size: number;
-  strokeWidth: number;
-  progressColor: string;
-  backgroundColor: string;
+  size?: number;
+  strokeWidth?: number;
+  color?: string;
 }
 
-const Container = styled(View)`
-  justify-content: center;
-  align-items: center;
-`;
-
-export const CircularProgress: React.FC<CircularProgressProps> = ({
+export function CircularProgress({
   progress,
-  size,
-  strokeWidth,
-  progressColor,
-  backgroundColor
-}) => {
+  size = 40,
+  strokeWidth = 4,
+  color = '#007AFF'
+}: CircularProgressProps) {
   const radius = (size - strokeWidth) / 2;
-  const circleCircumference = radius * 2 * Math.PI;
-  const strokeDashoffset = circleCircumference - (progress / 100) * circleCircumference;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (progress / 100) * circumference;
 
   return (
-    <Container>
-      <Svg width={size} height={size}>
-        <Circle
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg
+        className="transform -rotate-90"
+        width={size}
+        height={size}
+      >
+        {/* Background circle */}
+        <circle
+          className="opacity-20"
+          stroke={color}
+          fill="none"
+          strokeWidth={strokeWidth}
+          r={radius}
           cx={size / 2}
           cy={size / 2}
-          r={radius}
-          stroke={backgroundColor}
-          strokeWidth={strokeWidth}
-          fill="none"
         />
-        <Circle
+        {/* Progress circle */}
+        <circle
+          stroke={color}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${circumference} ${circumference}`}
+          style={{ strokeDashoffset: offset }}
+          className="transition-all duration-500 ease-in-out"
+          r={radius}
           cx={size / 2}
           cy={size / 2}
-          r={radius}
-          stroke={progressColor}
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={`${circleCircumference} ${circleCircumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
-      </Svg>
-    </Container>
+      </svg>
+      <div 
+        className="absolute inset-0 flex items-center justify-center text-sm font-medium"
+        style={{ color }}
+      >
+        {Math.round(progress)}%
+      </div>
+    </div>
   );
-};
+}
