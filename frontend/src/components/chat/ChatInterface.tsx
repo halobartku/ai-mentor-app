@@ -6,6 +6,7 @@ import { Message } from 'ai';
 import { nanoid } from 'nanoid';
 import { MessageInput } from './MessageInput';
 import { ChatBubble } from './ChatBubble';
+import { TypingIndicator } from './TypingIndicator';
 
 export function ChatInterface() {
   const { user } = useUser();
@@ -66,6 +67,7 @@ export function ChatInterface() {
             timestamp={message.createdAt?.toLocaleString()}
           />
         ))}
+        {isLoading && <TypingIndicator />}
       </div>
       <MessageInput
         value={input}
