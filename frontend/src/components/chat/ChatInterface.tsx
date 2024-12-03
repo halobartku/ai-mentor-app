@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { Message } from 'ai';
+import { nanoid } from 'nanoid';
 
 export function ChatInterface() {
   const { user } = useUser();
@@ -30,11 +31,23 @@ export function ChatInterface() {
       if (!response.ok) throw new Error('Failed to send message');
 
       const data = await response.json();
-      setMessages(prev => [
-        ...prev,
-        { role: 'user', content: input },
-        { role: 'assistant', content: data.content },
-      ]);
+      
+      // Create new messages with required fields
+      const userMessage: Message = {
+        id: nanoid(),
+        role: 'user',
+        content: input,
+        createdAt: new Date(),
+      };
+
+      const assistantMessage: Message = {
+        id: nanoid(),
+        role: 'assistant',
+        content: data.content,
+        createdAt: new Date(),
+      };
+
+      setMessages(prev => [...prev, userMessage, assistantMessage]);
       setInput('');
     } catch (error) {
       console.error('Chat Error:', error);
@@ -46,9 +59,9 @@ export function ChatInterface() {
   return (
     <div className="flex h-screen flex-col">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message, i) => (
+        {messages.map((message) => (
           <div
-            key={i}
+            key={message.id}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
