@@ -18,11 +18,13 @@ export interface ChatMessage {
   created_at: string;
 }
 
+// Edge Config for real-time data
 export async function getCachedResponse(userId: string, input: string): Promise<string | null> {
   const cacheKey = `cache:${userId}:${Buffer.from(input).toString('base64')}`;
   return getFromEdge<string>(cacheKey);
 }
 
+// Supabase for persistence
 export async function createChatSession(userId: string, title: string): Promise<ChatSession | null> {
   const { data, error } = await supabase
     .from('chat_sessions')
