@@ -1,136 +1,42 @@
-import React from 'react';
-import { 
-  TouchableWithoutFeedback, 
-  Animated, 
-  ActivityIndicator,
-  Text 
-} from 'react-native';
-import styled from 'styled-components/native';
+"use client";
 
-interface ButtonProps {
-  title: string;
-  onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'text';
-  size?: 'small' | 'medium' | 'large';
-  loading?: boolean;
-  disabled?: boolean;
-  icon?: React.ReactNode;
-  fullWidth?: boolean;
+import React from 'react';
+import { cn } from '@/lib/utils';
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'outline';
+  size?: 'sm' | 'md' | 'lg';
 }
 
-const Container = styled(Animated.View)<{
-  variant: string;
-  size: string;
-  disabled: boolean;
-  fullWidth: boolean;
-}>`
-  background-color: ${({ theme, variant, disabled }) => {
-    if (disabled) return theme.colors.text.tertiary;
-    switch (variant) {
-      case 'primary': return theme.colors.primary;
-      case 'secondary': return theme.colors.secondary;
-      case 'outline': return 'transparent';
-      case 'text': return 'transparent';
-      default: return theme.colors.primary;
-    }
-  }};
-  padding: ${({ theme, size }) => {
-    switch (size) {
-      case 'small': return `${theme.spacing.sm}px ${theme.spacing.md}px`;
-      case 'large': return `${theme.spacing.lg}px ${theme.spacing.xl}px`;
-      default: return `${theme.spacing.md}px ${theme.spacing.lg}px`;
-    }
-  }};
-  border-radius: ${({ theme }) => theme.borderRadius.full}px;
-  opacity: ${({ disabled }) => disabled ? 0.5 : 1};
-  width: ${({ fullWidth }) => fullWidth ? '100%' : 'auto'};
-  align-items: center;
-  justify-content: center;
-  flex-direction: row;
-  ${({ variant, theme }) => 
-    variant === 'outline' && `
-      border-width: 1px;
-      border-color: ${theme.colors.primary};
-    `
-  }
-`;
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant = 'primary', size = 'md', children, ...props }, ref) => {
+    const variants = {
+      primary: 'bg-blue-600 hover:bg-blue-700 text-white',
+      secondary: 'bg-gray-600 hover:bg-gray-700 text-white',
+      outline: 'border-2 border-blue-600 text-blue-600 hover:bg-blue-50'
+    };
 
-const ButtonText = styled(Text)<{ variant: string; size: string }>`
-  color: ${({ theme, variant }) => 
-    variant === 'outline' || variant === 'text' 
-      ? theme.colors.primary 
-      : theme.colors.text.inverse
-  };
-  font-size: ${({ theme, size }) => {
-    switch (size) {
-      case 'small': return theme.typography.sizes.subhead;
-      case 'large': return theme.typography.sizes.headline;
-      default: return theme.typography.sizes.body;
-    }
-  }}px;
-  font-weight: ${({ theme }) => theme.typography.weights.semibold};
-  margin-left: ${({ theme }) => theme.spacing.xs}px;
-`;
+    const sizes = {
+      sm: 'px-3 py-1.5 text-sm',
+      md: 'px-4 py-2 text-base',
+      lg: 'px-6 py-3 text-lg'
+    };
 
-export const Button: React.FC<ButtonProps> = ({
-  title,
-  onPress,
-  variant = 'primary',
-  size = 'medium',
-  loading = false,
-  disabled = false,
-  icon,
-  fullWidth = false,
-}) => {
-  const scale = React.useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.98,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 4
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 4
-    }).start();
-  };
-
-  return (
-    <TouchableWithoutFeedback
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      disabled={disabled || loading}
-    >
-      <Container
-        variant={variant}
-        size={size}
-        disabled={disabled}
-        fullWidth={fullWidth}
-        style={{ transform: [{ scale }] }}
-      >
-        {loading ? (
-          <ActivityIndicator 
-            color={variant === 'outline' || variant === 'text' 
-              ? '#007AFF' 
-              : '#FFFFFF'} 
-          />
-        ) : (
-          <>
-            {icon}
-            <ButtonText variant={variant} size={size}>
-              {title}
-            </ButtonText>
-          </>
+    return (
+      <button
+        className={cn(
+          'rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+          variants[variant],
+          sizes[size],
+          className
         )}
-      </Container>
-    </TouchableWithoutFeedback>
-  );
-};
+        ref={ref}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  }
+);
+
+Button.displayName = 'Button';
