@@ -1,30 +1,23 @@
-import { NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
-import { Anthropic } from '@anthropic-ai/sdk';
-import { AIPipelineService } from '@/services/ai-pipeline.service';
-
-const aiPipeline = new AIPipelineService();
+import { auth } from '@clerk/nextjs';
+import { StreamingTextResponse } from 'ai';
+import { processMessage } from '@/lib/ai-pipeline';
 
 export async function POST(req: Request) {
+  const { userId } = auth();
+  if (!userId) return new Response('Unauthorized', { status: 401 });
+
   try {
-    const { message } = await req.json();
-    
-    // Check cache
-    const cacheKey = `chat:${message.slice(0, 100)}`;
-    const cached = await kv.get(cacheKey);
-    if (cached) return NextResponse.json(cached);
+    const { messages, context } = await req.json();
+    const lastMessage = messages[messages.length - 1];
 
-    const response = await aiPipeline.processInput(message, {});
-    
-    // Cache response
-    await kv.set(cacheKey, response, { ex: 3600 });
+    const response = await processMessage(lastMessage.content, {
+      userId,
+      previousMessages: messages.slice(0, -1)
+    });
 
-    return NextResponse.json(response);
+    return response;
   } catch (error) {
-    console.error('Chat API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to process message' },
-      { status: 500 }
-    );
+    console.error('Chat API Error:', error);
+    return new Response('Internal Server Error', { status: 500 });
   }
 }
