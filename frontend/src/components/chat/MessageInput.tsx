@@ -1,82 +1,39 @@
-import React, { useState } from 'react';
-import { Platform, TextInput } from 'react-native';
-import styled from 'styled-components/native';
-import { SendIcon, MicIcon, ImageIcon } from '../common/Icons';
-
-const Container = styled.View`
-  flex-direction: row;
-  align-items: center;
-  padding: 12px 16px;
-  background-color: ${({ theme }) => theme.colors.inputBackground};
-  border-top-width: 1px;
-  border-top-color: ${({ theme }) => theme.colors.border};
-`;
-
-const Input = styled.TextInput`
-  flex: 1;
-  min-height: 40px;
-  max-height: 120px;
-  font-size: 16px;
-  margin: 0 12px;
-  padding: ${Platform.OS === 'ios' ? '12px' : '8px'};
-  background-color: ${({ theme }) => theme.colors.inputField};
-  border-radius: 20px;
-  color: ${({ theme }) => theme.colors.text};
-`;
-
-const IconButton = styled.TouchableOpacity<{ primary?: boolean }>`
-  padding: 8px;
-  background-color: ${({ theme, primary }) =>
-    primary ? theme.colors.primary : 'transparent'};
-  border-radius: 20px;
-  justify-content: center;
-  align-items: center;
-`;
+import React from 'react';
+import { Send } from 'lucide-react';
 
 interface MessageInputProps {
-  onSend: (message: string) => void;
-  onImageSelect?: () => void;
-  onVoiceRecord?: () => void;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  isLoading: boolean;
 }
 
-export const MessageInput: React.FC<MessageInputProps> = ({
-  onSend,
-  onImageSelect,
-  onVoiceRecord,
-}) => {
-  const [text, setText] = useState('');
-
-  const handleSend = () => {
-    if (text.trim()) {
-      onSend(text.trim());
-      setText('');
-    }
+export function MessageInput({ value, onChange, onSubmit, isLoading }: MessageInputProps) {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!value.trim() || isLoading) return;
+    onSubmit();
   };
 
   return (
-    <Container>
-      <IconButton onPress={onImageSelect}>
-        <ImageIcon size={24} color="#666" />
-      </IconButton>
-      <Input
-        value={text}
-        onChangeText={setText}
-        placeholder="Type your message..."
-        placeholderTextColor="#999"
-        multiline
-        maxLength={1000}
-        onSubmitEditing={handleSend}
-        blurOnSubmit={false}
-      />
-      {text.trim() ? (
-        <IconButton primary onPress={handleSend}>
-          <SendIcon size={24} color="#fff" />
-        </IconButton>
-      ) : (
-        <IconButton onPress={onVoiceRecord}>
-          <MicIcon size={24} color="#666" />
-        </IconButton>
-      )}
-    </Container>
+    <form onSubmit={handleSubmit} className="border-t p-4">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Type your message..."
+          className="flex-1 rounded-lg border border-gray-300 p-2 focus:border-blue-500 focus:outline-none"
+          disabled={isLoading}
+        />
+        <button
+          type="submit"
+          disabled={isLoading || !value.trim()}
+          className="rounded-lg bg-blue-500 p-2 text-white hover:bg-blue-600 disabled:opacity-50"
+        >
+          <Send className="h-5 w-5" />
+        </button>
+      </div>
+    </form>
   );
-};
+}
