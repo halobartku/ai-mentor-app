@@ -31,23 +31,21 @@ export function ChatInterface() {
       if (!response.ok) throw new Error('Failed to send message');
 
       const data = await response.json();
-      
-      // Create new messages with required fields
-      const userMessage: Message = {
-        id: nanoid(),
-        role: 'user',
-        content: input,
-        createdAt: new Date(),
-      };
-
-      const assistantMessage: Message = {
-        id: nanoid(),
-        role: 'assistant',
-        content: data.content,
-        createdAt: new Date(),
-      };
-
-      setMessages(prev => [...prev, userMessage, assistantMessage]);
+      setMessages(prev => [
+        ...prev,
+        { 
+          id: nanoid(),
+          role: 'user',
+          content: input,
+          createdAt: new Date()
+        },
+        { 
+          id: nanoid(),
+          role: 'assistant',
+          content: data.content,
+          createdAt: new Date() 
+        },
+      ]);
       setInput('');
     } catch (error) {
       console.error('Chat Error:', error);
