@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs';
 import { processMessage } from '@/lib/ai-pipeline';
 import { createChatSession, saveChatMessage } from '@/lib/chat-storage';
+import { nanoid } from 'nanoid';
 
 export async function POST(req: Request) {
   const { userId } = auth();
@@ -16,9 +17,12 @@ export async function POST(req: Request) {
       activeSessionId = session.id;
     }
 
+    // Create message with required ID
     await saveChatMessage(activeSessionId, {
+      id: nanoid(),
       role: 'user',
-      content: message
+      content: message,
+      createdAt: new Date()
     });
 
     const response = await processMessage(message, {
