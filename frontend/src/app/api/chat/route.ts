@@ -3,6 +3,8 @@ import { processMessage } from '@/lib/ai-pipeline';
 import { createChatSession, saveChatMessage } from '@/lib/chat-storage';
 import { nanoid } from 'nanoid';
 
+export const runtime = 'nodejs';
+
 export async function POST(req: Request) {
   const { userId } = auth();
   if (!userId) return new Response('Unauthorized', { status: 401 });
@@ -17,7 +19,6 @@ export async function POST(req: Request) {
       activeSessionId = session.id;
     }
 
-    // Create message with required ID
     await saveChatMessage(activeSessionId, {
       id: nanoid(),
       role: 'user',
