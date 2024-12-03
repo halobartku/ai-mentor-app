@@ -1,43 +1,33 @@
+"use client";
+
 import React from 'react';
-import { View, Text } from 'react-native';
-import styled from 'styled-components/native';
 import { format } from 'date-fns';
 
 interface UserPresenceProps {
-  isOnline: boolean;
-  lastSeen?: Date;
+  username: string;
+  lastActive?: Date;
+  isOnline?: boolean;
 }
 
-const Container = styled(View)`
-  flex-direction: row;
-  align-items: center;
-`;
-
-const StatusDot = styled(View)<{ isOnline: boolean }>`
-  width: 8px;
-  height: 8px;
-  border-radius: 4px;
-  background-color: ${({ theme, isOnline }) =>
-    isOnline ? theme.colors.success : theme.colors.textSecondary};
-  margin-right: ${({ theme }) => theme.spacing.xs}px;
-`;
-
-const StatusText = styled(Text)`
-  font-size: ${({ theme }) => theme.typography.caption.fontSize}px;
-  color: ${({ theme }) => theme.colors.textSecondary};
-`;
-
-export const UserPresence: React.FC<UserPresenceProps> = ({ isOnline, lastSeen }) => {
-  const getStatusText = () => {
-    if (isOnline) return 'Online';
-    if (lastSeen) return `Last seen ${format(lastSeen, 'h:mm a')}`;
-    return 'Offline';
-  };
-
+export function UserPresence({ username, lastActive, isOnline = false }: UserPresenceProps) {
   return (
-    <Container>
-      <StatusDot isOnline={isOnline} />
-      <StatusText>{getStatusText()}</StatusText>
-    </Container>
+    <div className="flex items-center space-x-2">
+      <div className="relative">
+        <div className="h-2 w-2 rounded-full bg-gray-300">
+          {isOnline && (
+            <div className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-ping rounded-full bg-green-400 opacity-75" />
+          )}
+          <div className={`absolute inset-0 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
+        </div>
+      </div>
+      <div className="flex flex-col">
+        <span className="text-sm font-medium">{username}</span>
+        {lastActive && !isOnline && (
+          <span className="text-xs text-gray-500">
+            Last seen {format(lastActive, 'MMM d, h:mm a')}
+          </span>
+        )}
+      </div>
+    </div>
   );
-};
+}
