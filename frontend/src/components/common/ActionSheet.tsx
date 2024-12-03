@@ -1,7 +1,6 @@
+"use client";
+
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import styled from 'styled-components/native';
-import { Dialog } from '../transitions/Dialog';
 
 interface ActionSheetOption {
   label: string;
@@ -10,78 +9,46 @@ interface ActionSheetOption {
 }
 
 interface ActionSheetProps {
-  isVisible: boolean;
+  isOpen: boolean;
   onClose: () => void;
   options: ActionSheetOption[];
-  title?: string;
 }
 
-const Title = styled(Text)`
-  font-size: ${({ theme }) => theme.typography.sizes.subhead}px;
-  color: ${({ theme }) => theme.colors.text.secondary};
-  text-align: center;
-  padding: ${({ theme }) => theme.spacing.md}px;
-`;
+export function ActionSheet({ isOpen, onClose, options }: ActionSheetProps) {
+  if (!isOpen) return null;
 
-const OptionContainer = styled(ScrollView)`
-  max-height: 70%;
-`;
-
-const Option = styled(TouchableOpacity)<{ isDestructive?: boolean }>`
-  padding: ${({ theme }) => theme.spacing.lg}px;
-  border-top-width: 1px;
-  border-top-color: ${({ theme }) => theme.colors.separator};
-`;
-
-const OptionText = styled(Text)<{ isDestructive?: boolean }>`
-  font-size: ${({ theme }) => theme.typography.sizes.body}px;
-  color: ${({ theme, isDestructive }) => 
-    isDestructive ? theme.colors.danger : theme.colors.text.primary};
-  text-align: center;
-`;
-
-const CancelButton = styled(TouchableOpacity)`
-  margin-top: ${({ theme }) => theme.spacing.md}px;
-  background-color: ${({ theme }) => theme.colors.background.primary};
-  padding: ${({ theme }) => theme.spacing.lg}px;
-  border-radius: ${({ theme }) => theme.borderRadius.lg}px;
-`;
-
-const CancelText = styled(Text)`
-  font-size: ${({ theme }) => theme.typography.sizes.body}px;
-  font-weight: ${({ theme }) => theme.typography.weights.semibold};
-  color: ${({ theme }) => theme.colors.primary};
-  text-align: center;
-`;
-
-export const ActionSheet: React.FC<ActionSheetProps> = ({
-  isVisible,
-  onClose,
-  options,
-  title
-}) => {
   return (
-    <Dialog isVisible={isVisible} onClose={onClose} position="bottom">
-      {title && <Title>{title}</Title>}
-      <OptionContainer>
-        {options.map((option, index) => (
-          <Option
-            key={index}
-            onPress={() => {
-              onClose();
-              option.onPress();
-            }}
-            isDestructive={option.destructive}
-          >
-            <OptionText isDestructive={option.destructive}>
+    <div className="fixed inset-0 z-50">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black bg-opacity-50"
+        onClick={onClose}
+      />
+      
+      {/* Content */}
+      <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-xl overflow-hidden">
+        <div className="max-h-[70vh] overflow-y-auto">
+          {options.map((option, index) => (
+            <button
+              key={index}
+              onClick={() => {
+                option.onPress();
+                onClose();
+              }}
+              className={`w-full px-4 py-3 text-left text-sm border-b border-gray-200 last:border-0 ${option.destructive ? 'text-red-600' : 'text-gray-900'}`}
+            >
               {option.label}
-            </OptionText>
-          </Option>
-        ))}
-      </OptionContainer>
-      <CancelButton onPress={onClose}>
-        <CancelText>Cancel</CancelText>
-      </CancelButton>
-    </Dialog>
+            </button>
+          ))}
+        </div>
+        
+        <button
+          onClick={onClose}
+          className="w-full px-4 py-3 text-sm font-medium text-blue-600 border-t border-gray-200 bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
-};
+}
